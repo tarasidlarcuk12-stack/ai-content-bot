@@ -28,8 +28,8 @@ if not TELEGRAM_BOT_TOKEN or not GEMINI_API_KEY:
     raise ValueError("ПОМИЛКА: API-ключі не знайдено. Перевірте змінні середовища на Render.")
 
 genai.configure(api_key=GEMINI_API_KEY)
-# <--- ОСЬ ЦЯ ВАЖЛИВА ЗМІНА: ВИКОРИСТОВУЄМО ПРАВИЛЬНУ НАЗВУ МОДЕЛІ
-gemini_model = genai.GenerativeModel('gemini-1.0-pro')
+# <--- ФІНАЛЬНА ЗМІНА: ВИКОРИСТОВУЄМО НАЙНОВІШУ СТАБІЛЬНУ МОДЕЛЬ
+gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 SELECTING_PLATFORM, GETTING_TOPIC = range(2)
 user_data_storage = {}
@@ -128,3 +128,4 @@ logger.info("Starting bot thread...")
 bot_thread = threading.Thread(target=run_bot)
 bot_thread.daemon = True
 bot_thread.start()
+
