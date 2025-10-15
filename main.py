@@ -28,7 +28,8 @@ if not TELEGRAM_BOT_TOKEN or not GEMINI_API_KEY:
     raise ValueError("ПОМИЛКА: API-ключі не знайдено. Перевірте змінні середовища на Render.")
 
 genai.configure(api_key=GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel('gemini-pro')
+# <--- ОСЬ ЦЯ ВАЖЛИВА ЗМІНА: ВИКОРИСТОВУЄМО ПРАВИЛЬНУ НАЗВУ МОДЕЛІ
+gemini_model = genai.GenerativeModel('gemini-1.0-pro')
 
 SELECTING_PLATFORM, GETTING_TOPIC = range(2)
 user_data_storage = {}
@@ -120,8 +121,6 @@ def run_bot():
     )
     application.add_handler(conv_handler)
     logger.info("Starting bot polling...")
-    # <--- ОСЬ ЦЯ ВАЖЛИВА ЗМІНА
-    # Ми кажемо боту не перехоплювати сигнали зупинки, бо цим керує gunicorn
     application.run_polling(stop_signals=None)
 
 # --- Запуск ---
@@ -129,4 +128,3 @@ logger.info("Starting bot thread...")
 bot_thread = threading.Thread(target=run_bot)
 bot_thread.daemon = True
 bot_thread.start()
-
