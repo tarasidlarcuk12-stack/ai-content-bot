@@ -21,29 +21,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Завантажуємо токени з середовища Render
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
 if not TELEGRAM_BOT_TOKEN or not GEMINI_API_KEY:
     raise ValueError("ПОМИЛКА: API-ключі не знайдено. Перевірте змінні середовища на Render.")
 
-# Конфігурація Gemini API
 genai.configure(api_key=GEMINI_API_KEY)
 gemini_model = genai.GenerativeModel('gemini-pro')
 
-# Стани для діалогу
 SELECTING_PLATFORM, GETTING_TOPIC = range(2)
 user_data_storage = {}
 
-# --- Веб-сервер Flask (для Render) ---
-# Render вимагає, щоб додаток відповідав на веб-запити.
+# --- Веб-сервер Flask ---
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    # Ця сторінка буде показувати, що наш веб-сервер працює.
-    return "Web server is running. Bot should be active."
+    return "Web server is running. Bot is active."
 
 # --- Логіка Telegram-бота ---
 
@@ -127,14 +122,13 @@ def run_bot():
     logger.info("Starting bot polling...")
     application.run_polling()
 
-# --- Запуск ---
-if __name__ == "__main__":
-    # Запускаємо бота в окремому потоці, щоб він не блокував веб-сервер
-    bot_thread = threading.Thread(target=run_bot)
-    bot_thread.start()
-    
-    # Flask-сервер запускається в основному потоці
-    # Gunicorn буде використовувати цей об'єкт 'app'
-    logger.info("Starting Flask server...")
-    # При запуску через Gunicorn цей блок не виконується напряму,
-    # але Gunicorn знаходить об'єкт 'app' і запускає його.
+# --- ВАЖЛИВА ЗМІНА: ЗАПУСК БОТА ---
+# Цей код тепер виконується одразу при завантаженні файлу,
+# гарантуючи, що потік з ботом стартує до того, як Render почне перевірку.
+logger.info("Starting bot thread...")
+bot_thread = threading.Thread(target=run_bot)
+bot_thread.daemon = True
+bot_thread.start()
+
+# Gunicorn буде використовувати об'єкт 'app' з цього файлу для запуску веб-сервера.
+
