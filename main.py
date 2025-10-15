@@ -120,15 +120,13 @@ def run_bot():
     )
     application.add_handler(conv_handler)
     logger.info("Starting bot polling...")
-    application.run_polling()
+    # <--- ОСЬ ЦЯ ВАЖЛИВА ЗМІНА
+    # Ми кажемо боту не перехоплювати сигнали зупинки, бо цим керує gunicorn
+    application.run_polling(stop_signals=None)
 
-# --- ВАЖЛИВА ЗМІНА: ЗАПУСК БОТА ---
-# Цей код тепер виконується одразу при завантаженні файлу,
-# гарантуючи, що потік з ботом стартує до того, як Render почне перевірку.
+# --- Запуск ---
 logger.info("Starting bot thread...")
 bot_thread = threading.Thread(target=run_bot)
 bot_thread.daemon = True
 bot_thread.start()
-
-# Gunicorn буде використовувати об'єкт 'app' з цього файлу для запуску веб-сервера.
 
