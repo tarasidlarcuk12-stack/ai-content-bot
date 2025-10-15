@@ -1,9 +1,9 @@
 import os
 import logging
-import threading
-from flask import Flask
-import google.generativeai as genai
+import asyncio
+from flask import Flask, request
 
+import google.generativeai as genai
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -23,25 +23,20 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+# WEBHOOK_URL - це публічна адреса вашого сервісу на Render
+WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 
-if not TELEGRAM_BOT_TOKEN or not GEMINI_API_KEY:
-    raise ValueError("ПОМИЛКА: API-ключі не знайдено. Перевірте змінні середовища на Render.")
+if not all([TELEGRAM_BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL]):
+    raise ValueError("ПОМИЛКА: Один або декілька ключів (Telegram, Gemini, Webhook URL) не знайдено.")
 
 genai.configure(api_key=GEMINI_API_KEY)
-# <--- ФІНАЛЬНА ЗМІНА: ПОВЕРТАЄМОСЯ ДО НАЙБІЛЬШ СТАБІЛЬНОЇ МОДЕЛІ ДЛЯ НОВОГО КЛЮЧА
+# Повертаємося до найбільш стабільної моделі, яка точно працює з новими ключами
 gemini_model = genai.GenerativeModel('gemini-pro')
 
 SELECTING_PLATFORM, GETTING_TOPIC = range(2)
 user_data_storage = {}
 
-# --- Веб-сервер Flask ---
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Web server is running. Bot is active."
-
-# --- Логіка Telegram-бота ---
+# --- Логіка Telegram-бота (залишається без змін) ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = [
@@ -81,11 +76,7 @@ async def generate_content(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             f"Створи 3 унікальні ідеї для контенту в соціальній мережі {platform} на тему '{topic}'. "
             f"Для кожної ідеї надай: привабливий заголовок (Ідея), короткий опис/текст для посту (Текст) "
             f"та добірку з 5-7 релевантних хештегів (Хештеги). "
-            f"Відповідь надай чітко структурованою, використовуючи маркери '1️⃣', '2️⃣', '3️⃣' для кожного блоку."
-            f"Форматуй відповідь так:\n"
-            f"1️⃣ **Ідея:** [тут заголовок]\n"
-            f"**Текст:** [тут текст посту]\n"
-            f"**Хештеги:** [тут хештеги]"
+            f"Відповідь надай чітко структурованою, використовуючи маркери '1️⃣', '2️⃣', '3️⃣'."
         )
         response = gemini_model.generate_content(prompt)
         final_message = f"✨ Ось твої ідеї контенту для **{platform}** на тему **{topic}**:\n\n{response.text}"
@@ -103,29 +94,42 @@ async def new_generation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     return await start(update, context)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Діалог скасовано. Щоб почати знову, натисніть /start.")
+    await update.message.reply_text("Діалог скасовано.")
     if update.effective_user.id in user_data_storage:
         del user_data_storage[update.effective_user.id]
     return ConversationHandler.END
 
-def run_bot():
-    """Запускає Telegram-бота."""
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start), CommandHandler('new', new_generation)],
-        states={
-            SELECTING_PLATFORM: [CallbackQueryHandler(platform_choice)],
-            GETTING_TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_content)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel)],
-    )
-    application.add_handler(conv_handler)
-    logger.info("Starting bot polling...")
-    application.run_polling(stop_signals=None)
 
-# --- Запуск ---
-logger.info("Starting bot thread...")
-bot_thread = threading.Thread(target=run_bot)
-bot_thread.daemon = True
-bot_thread.start()
+# --- Налаштування Application та Flask ---
+ptb_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+conv_handler = ConversationHandler(
+    entry_points=[CommandHandler('start', start), CommandHandler('new', new_generation)],
+    states={
+        SELECTING_PLATFORM: [CallbackQueryHandler(platform_choice)],
+        GETTING_TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_content)],
+    },
+    fallbacks=[CommandHandler('cancel', cancel)],
+)
+ptb_app.add_handler(conv_handler)
 
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def home():
+    return "Webhook server is running. Bot is active."
+
+@flask_app.route(f'/{TELEGRAM_BOT_TOKEN}', methods=['POST'])
+async def telegram_webhook():
+    update_data = request.get_json()
+    update = Update.de_json(data=update_data, bot=ptb_app.bot)
+    await ptb_app.process_update(update)
+    return {'ok': True}
+
+async def main():
+    logger.info("Setting webhook...")
+    await ptb_app.bot.set_webhook(url=f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}")
+    logger.info("Webhook is set.")
+
+# Запускаємо налаштування вебхука перед запуском gunicorn
+if __name__ != '__main__':
+    asyncio.run(main())
